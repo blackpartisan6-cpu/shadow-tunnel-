@@ -1,0 +1,54 @@
+name: Build SHADOW TUNNEL APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+env:
+  SING_BOX_VERSION: v1.10.7
+  GOMOBILE_VERSION: v0.1.4
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decompresser le projet
+        run: |
+          unzip -q ShadowTunnel.zip
+          ls ShadowTunnel
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build libbox
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          git clone --depth 1 --branch "$SING_BOX_VERSION" https://github.com/SagerNet/sing-box.git /tmp/sing-box
+          cd /tmp/sing-box
+          go install -v github.com/sagernet/gomobile/cmd/gomobile@${GOMOBILE_VERSION}
+          go install -v github.com/sagernet/gomobile/cmd/gobind@${GOMOBILE_VERSION}
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android
+          mkdir -p "$GITHUB_WORKSPACE/ShadowTunnel/app/libs"
+          cp libbox.aar "$GITHUB_WORKSPACE/ShadowTunnel/app/libs/libbox.aar"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Build APK
+        run: gradle -p ShadowTunnel assembleRelease --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ShadowTunnel-apk
+          path: ShadowTunnel/app/build/outputs/apk/release/*.apk
